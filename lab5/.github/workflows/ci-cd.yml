@@ -1,0 +1,69 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and start containers
+        run: |
+          cd lab5
+          docker compose up -d --build
+
+      - name: Set up Python for tests
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests
+
+      - name: Run Integration Tests
+        run: |
+          cd lab5
+          pytest tests/test_integration.py
+
+      - name: Stop containers
+        if: always()
+        run: |
+          cd lab5
+          docker compose down
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Server Image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./lab5/server
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/staff-control-server:latest
+
+      - name: Build and push Client Image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./lab5/client
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/staff-control-client:latest
